@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/connection_config.dart';
+import '../models/sensor_data.dart';
 import '../providers/data_provider.dart';
 import '../widgets/real_time_chart.dart';
 import '../widgets/data_card.dart';
@@ -9,6 +10,7 @@ import 'ai_analysis_screen.dart';
 import 'connection_screen.dart';
 import 'data_history_screen.dart';
 import 'data_visualization_screen.dart';
+import 'raw_data_screen.dart';
 import 'storage_settings_screen.dart';
 import 'help_screen.dart';
 
@@ -55,6 +57,16 @@ class _HomeScreenState extends State<HomeScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const DataHistoryScreen()),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.subject),
+            tooltip: '原始数据',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const RawDataScreen()),
               );
             },
           ),
@@ -126,28 +138,47 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
-                    child: RealTimeChart(
-                      data: provider.recentData,
-                      dataKey: _resolveDataKey(provider),
-                    ),
+                    child: _collectNumericKeys(provider.recentData).isEmpty
+                        ? const Center(child: Text('当前数据没有数值字段，请查看原始数据'))
+                        : RealTimeChart(
+                            data: provider.recentData,
+                            dataKey: _resolveDataKey(provider),
+                          ),
                   ),
                 ),
                 Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const DataVisualizationScreen(),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.insert_chart),
-                      label: const Text('查看更多图表'),
-                    ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const DataVisualizationScreen(),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.insert_chart),
+                          label: const Text('查看更多图表'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            await provider.saveRecentData();
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(provider.errorMessage ?? '已保存当前实时数据')),
+                            );
+                          },
+                          icon: const Icon(Icons.save_alt),
+                          label: const Text('保存当前数据'),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -184,7 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (provider.recentData.isEmpty) return const SizedBox.shrink();
 
     final latestData = provider.recentData.first;
-    final dataKeys = latestData.data.keys.toList();
+    final dataKeys = _collectDisplayKeys(provider.recentData);
 
     return SizedBox(
       height: 100,
@@ -211,8 +242,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildDataKeySelector(DataProvider provider) {
     final dataKeys = provider.recentData.isNotEmpty
-        ? provider.recentData.first.data.keys.toList()
+        ? _collectNumericKeys(provider.recentData)
         : ['temperature', 'humidity', 'voltage', 'current'];
+    if (dataKeys.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Text('当前数据没有可绘制的数值字段'),
+      );
+    }
     final selectedKey = _resolveDataKey(provider);
 
     return Padding(
@@ -268,10 +305,30 @@ class _HomeScreenState extends State<HomeScreen> {
     if (provider.recentData.isEmpty) {
       return _selectedDataKey;
     }
-    final dataKeys = provider.recentData.first.data.keys.toList();
+    final dataKeys = _collectNumericKeys(provider.recentData);
     if (dataKeys.contains(_selectedDataKey)) {
       return _selectedDataKey;
     }
     return dataKeys.isNotEmpty ? dataKeys.first : _selectedDataKey;
+  }
+
+  List<String> _collectNumericKeys(List<SensorData> data) {
+    final keys = <String>{};
+    for (final item in data) {
+      item.data.forEach((key, value) {
+        if (value is num) {
+          keys.add(key);
+        }
+      });
+    }
+    return keys.toList();
+  }
+
+  List<String> _collectDisplayKeys(List<SensorData> data) {
+    final keys = <String>{};
+    for (final item in data) {
+      keys.addAll(item.data.keys);
+    }
+    return keys.toList();
   }
 }

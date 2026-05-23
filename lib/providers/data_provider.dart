@@ -13,6 +13,7 @@ import '../services/ai_service.dart';
 import '../services/mqtt_service.dart';
 import '../services/bluetooth_service.dart';
 import '../services/database_service.dart';
+import '../services/app_settings_service.dart';
 
 class DataProvider extends ChangeNotifier {
   final AiService _aiService = AiService();
@@ -20,8 +21,10 @@ class DataProvider extends ChangeNotifier {
   final BluetoothService _bluetoothService = BluetoothService();
   final WifiService _wifiService = WifiService();
   final DatabaseService _databaseService = DatabaseService();
+  final AppSettingsService _settingsService = AppSettingsService();
 
   ConnectionConfig? _currentConfig;
+  ConnectionConfig? _savedConfig;
   AiConfig _aiConfig = AiConfig.defaults();
   bool _isConnected = false;
   bool _autoSave = false;
@@ -43,24 +46,28 @@ class DataProvider extends ChangeNotifier {
     notifyListeners();
   }
   ConnectionConfig? get currentConfig => _currentConfig;
+  ConnectionConfig? get savedConfig => _savedConfig;
   AiConfig get aiConfig => _aiConfig;
   DatabaseService get databaseService => _databaseService;
   List<BluetoothDevice> get discoveredBluetoothDevices => _bluetoothService.discoveredDevices;
   List<WifiDiscoveredDevice> get discoveredWifiDevices => _wifiService.discoveredDevices;
 
+  Future<void> loadSettings() async {
+    try {
+      _savedConfig = await _settingsService.loadConnectionConfig();
+      _autoSave = await _settingsService.loadAutoSave();
+      _aiConfig = await _settingsService.loadAiConfig() ?? _aiConfig;
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = '配置加载失败: $e';
+      notifyListeners();
+    }
+  }
+
   Future<void> loadAiConfig() async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/ai_config.json');
-      if (!await file.exists()) {
-        return;
-      }
-      final content = await file.readAsString();
-      final jsonData = jsonDecode(content);
-      if (jsonData is Map<String, dynamic>) {
-        _aiConfig = AiConfig.fromJson(jsonData);
-        notifyListeners();
-      }
+      _aiConfig = await _settingsService.loadAiConfig() ?? _aiConfig;
+      notifyListeners();
     } catch (e) {
       _errorMessage = 'AI 配置加载失败: $e';
       notifyListeners();
@@ -70,45 +77,72 @@ class DataProvider extends ChangeNotifier {
   Future<void> updateAiConfig(AiConfig config) async {
     _aiConfig = config;
     try {
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/ai_config.json');
-      await file.writeAsString(jsonEncode(_aiConfig.toJson()));
+      await _settingsService.saveAiConfig(_aiConfig);
     } catch (e) {
       _errorMessage = 'AI 配置保存失败: $e';
     }
     notifyListeners();
   }
 
-  void setAutoSave(bool value) {
+  Future<void> setAutoSave(bool value) async {
     _autoSave = value;
+    await _settingsService.saveAutoSave(value);
     notifyListeners();
   }
 
   Future<void> connect(ConnectionConfig config) async {
+    await _dataSubscription?.cancel();
+    await _connectionSubscription?.cancel();
+
     _currentConfig = config;
     _errorMessage = null;
     _autoSave = config.autoSave;
+    _isConnected = false;
+    notifyListeners();
 
     try {
       switch (config.type) {
         case ConnectionType.mqtt:
-          _dataSubscription = _mqttService.dataStream.listen(_onDataReceived);
+          _dataSubscription = _mqttService.dataStream.listen(
+            _onDataReceived,
+            onError: (error) => _setConnectionError(error.toString()),
+          );
           _connectionSubscription = _mqttService.connectionStream.listen(_onConnectionChanged);
           await _mqttService.connect(config);
+          _isConnected = _mqttService.isConnected;
           break;
         case ConnectionType.bluetooth:
-          _dataSubscription = _bluetoothService.dataStream.listen(_onDataReceived);
+          _dataSubscription = _bluetoothService.dataStream.listen(
+            _onDataReceived,
+            onError: (error) => _setConnectionError(error.toString()),
+          );
           _connectionSubscription = _bluetoothService.connectionStream.listen(_onConnectionChanged);
           await _bluetoothService.connect(config);
+          _isConnected = _bluetoothService.isConnected;
           break;
         case ConnectionType.wifi:
-          _dataSubscription = _wifiService.dataStream.listen(_onDataReceived);
+          _dataSubscription = _wifiService.dataStream.listen(
+            _onDataReceived,
+            onError: (error) => _setConnectionError(error.toString()),
+          );
           _connectionSubscription = _wifiService.connectionStream.listen(_onConnectionChanged);
           await _wifiService.connect(config);
+          _isConnected = _wifiService.isConnected;
           break;
       }
+
+      if (!_isConnected) {
+        throw Exception('连接未建立，请检查地址、端口、权限或设备状态');
+      }
+
+      _savedConfig = config;
+      await _settingsService.saveConnectionConfig(config);
+      await _settingsService.saveAutoSave(config.autoSave);
+      notifyListeners();
     } catch (e) {
       _errorMessage = e.toString();
+      _isConnected = false;
+      _currentConfig = null;
       notifyListeners();
     }
   }
@@ -133,6 +167,12 @@ class DataProvider extends ChangeNotifier {
 
     _isConnected = false;
     _currentConfig = null;
+    notifyListeners();
+  }
+
+  void _setConnectionError(String message) {
+    _errorMessage = message;
+    _isConnected = false;
     notifyListeners();
   }
 
@@ -170,6 +210,17 @@ class DataProvider extends ChangeNotifier {
 
   Future<void> saveData(SensorData data) async {
     await _databaseService.insertData(data);
+  }
+
+  Future<void> saveRecentData() async {
+    if (_recentData.isEmpty) {
+      _errorMessage = '当前没有可保存的数据';
+      notifyListeners();
+      return;
+    }
+    await _databaseService.insertBatch(_recentData);
+    _errorMessage = '已保存 ${_recentData.length} 条实时数据';
+    notifyListeners();
   }
 
   Future<String> askAiAboutData({
@@ -244,7 +295,7 @@ class DataProvider extends ChangeNotifier {
     for (var item in data) {
       final timestamp = item.timestamp.toIso8601String();
       final deviceId = item.deviceId;
-      final dataStr = jsonEncode(item.data);
+      final dataStr = item.rawPayload.replaceAll('"', '""');
       buffer.writeln('"$timestamp","$deviceId","$dataStr"');
     }
     

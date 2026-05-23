@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
@@ -167,12 +166,11 @@ class MqttService {
 
   void _parseAndAddData(String message) {
     try {
-      final trimmedMessage = message.trim();
-      final jsonData = json.decode(trimmedMessage) as Map<String, dynamic>;
-      final sensorData = SensorData.fromJson(jsonData);
+      final sensorData = SensorData.fromMessage(message);
       _dataController.add(sensorData);
     } catch (e) {
       print('数据解析错误: $e');
+      _dataController.add(SensorData.fromMessage(message));
     }
   }
 

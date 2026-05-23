@@ -13,7 +13,11 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (context) => DataProvider(),
+      create: (context) {
+        final provider = DataProvider();
+        provider.loadSettings();
+        return provider;
+      },
       child: MaterialApp(
         title: '数据监控助手',
         debugShowCheckedModeBanner: false,

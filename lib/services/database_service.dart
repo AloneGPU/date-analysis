@@ -29,7 +29,7 @@ class DatabaseService {
 
     return await openDatabase(
       dbPath,
-      version: 2,
+      version: 3,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE sensor_data(
@@ -37,6 +37,8 @@ class DatabaseService {
             device_id TEXT,
             timestamp INTEGER,
             data TEXT,
+            raw_payload TEXT,
+            is_structured INTEGER DEFAULT 1,
             created_at INTEGER DEFAULT (strftime('%s', 'now'))
           )
         ''');
@@ -53,6 +55,10 @@ class DatabaseService {
           await db.execute('CREATE INDEX idx_timestamp ON sensor_data(timestamp)');
           await db.execute('CREATE INDEX idx_device_id ON sensor_data(device_id)');
         }
+        if (oldVersion < 3) {
+          await db.execute('ALTER TABLE sensor_data ADD COLUMN raw_payload TEXT');
+          await db.execute('ALTER TABLE sensor_data ADD COLUMN is_structured INTEGER DEFAULT 1');
+        }
       },
     );
   }
@@ -65,6 +71,8 @@ class DatabaseService {
         'device_id': data.deviceId,
         'timestamp': data.timestamp.millisecondsSinceEpoch,
         'data': jsonEncode(data.data),
+        'raw_payload': data.rawPayload,
+        'is_structured': data.isStructured ? 1 : 0,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -81,6 +89,8 @@ class DatabaseService {
           'device_id': data.deviceId,
           'timestamp': data.timestamp.millisecondsSinceEpoch,
           'data': jsonEncode(data.data),
+          'raw_payload': data.rawPayload,
+          'is_structured': data.isStructured ? 1 : 0,
         },
       );
     }
@@ -126,10 +136,14 @@ class DatabaseService {
     return maps.map((map) {
       final dataStr = map['data'] as String;
       final dataMap = _parseDataString(dataStr);
+      final rawPayload = (map['raw_payload'] as String?) ?? dataStr;
+      final isStructured = (map['is_structured'] as int?) == 1;
       return SensorData(
         deviceId: map['device_id'] as String,
         timestamp: DateTime.fromMillisecondsSinceEpoch(map['timestamp'] as int),
         data: dataMap,
+        rawPayload: rawPayload,
+        isStructured: isStructured,
       );
     }).toList();
   }

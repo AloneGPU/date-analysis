@@ -63,29 +63,57 @@ class WifiService {
       };
 
       final probe = utf8.encode('$discoveryProbe\n');
-      for (final port in ports) {
-        socket.send(probe, InternetAddress('255.255.255.255'), port);
+      final hosts = await _buildDiscoveryHosts();
+      for (final host in hosts) {
+        for (final port in ports) {
+          try {
+            socket.send(probe, InternetAddress(host), port);
+          } catch (_) {}
+        }
       }
 
-      await for (final event in socket.timeout(discoveryTimeout)) {
-        if (event != RawSocketEvent.read) continue;
+      final subscription = socket.listen((event) {
+        if (event != RawSocketEvent.read) return;
 
         Datagram? datagram;
-        while ((datagram = socket.receive()) != null) {
+        while ((datagram = socket!.receive()) != null) {
           final device = _parseDiscoveryResponse(datagram!);
           if (device != null) {
             _addOrUpdateDevice(device);
           }
         }
-      }
-    } on TimeoutException {
-      // Discovery is complete when the listen window closes.
+      }, onError: (error) {
+        _devicesController.addError('WiFi 设备发现失败: $error');
+      });
+
+      await Future.delayed(discoveryTimeout);
+      await subscription.cancel();
     } catch (e) {
       _devicesController.addError('WiFi 设备发现失败: $e');
     } finally {
       socket?.close();
       _isDiscovering = false;
     }
+  }
+
+  Future<List<String>> _buildDiscoveryHosts() async {
+    final hosts = <String>{'255.255.255.255'};
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLinkLocal: false,
+        includeLoopback: false,
+      );
+      for (final interface in interfaces) {
+        for (final address in interface.addresses) {
+          final parts = address.address.split('.');
+          if (parts.length == 4) {
+            hosts.add('${parts[0]}.${parts[1]}.${parts[2]}.255');
+          }
+        }
+      }
+    } catch (_) {}
+    return hosts.toList();
   }
 
   WifiDiscoveredDevice? _parseDiscoveryResponse(Datagram datagram) {
@@ -157,6 +185,8 @@ class WifiService {
 
     _isConnecting = true;
     _lastConfig = config;
+    _isConnected = false;
+    _connectionController.add(false);
 
     final settings = config.settings;
     final host = settings['host'] as String;
@@ -177,17 +207,22 @@ class WifiService {
       _startHeartbeat();
     } on TimeoutException {
       _isConnecting = false;
+      _isConnected = false;
       _handleConnectionError('连接超时，请检查主机地址和端口');
     } on SocketException catch (e) {
       _isConnecting = false;
+      _isConnected = false;
       _handleConnectionError('Socket错误: ${e.toString()}');
     } catch (e) {
       _isConnecting = false;
+      _isConnected = false;
       _handleConnectionError('未知错误: ${e.toString()}');
     }
   }
 
   void _handleConnectionError(String message) {
+    _isConnected = false;
+    _connectionController.add(false);
     if (_retryCount < maxRetries) {
       _retryCount++;
       _scheduleReconnect();
@@ -262,14 +297,8 @@ class WifiService {
       List<String> lines = trimmedMessage.split('\n');
       for (var line in lines) {
         if (line.trim().isEmpty) continue;
-        
-        try {
-          final jsonData = json.decode(line) as Map<String, dynamic>;
-          final sensorData = SensorData.fromJson(jsonData);
-          _dataController.add(sensorData);
-        } catch (e) {
-          print('数据解析错误: $e');
-        }
+
+        _dataController.add(SensorData.fromMessage(line));
       }
     } catch (e) {
       print('数据解析错误: $e');

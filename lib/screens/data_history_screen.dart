@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../models/sensor_data.dart';
 import '../providers/data_provider.dart';
 import '../widgets/real_time_chart.dart';
 
@@ -94,14 +95,20 @@ class _DataHistoryScreenState extends State<DataHistoryScreen> {
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     children: [
-                      Expanded(
-                        flex: 2,
-                        child: RealTimeChart(
-                          data: provider.historicalData,
-                          dataKey: _resolveDataKey(provider.historicalData.first.data.keys.toList()),
-                          lineColor: Colors.orange,
+                      if (_collectNumericKeys(provider.historicalData).isNotEmpty)
+                        Expanded(
+                          flex: 2,
+                          child: RealTimeChart(
+                            data: provider.historicalData,
+                            dataKey: _resolveDataKey(_collectNumericKeys(provider.historicalData)),
+                            lineColor: Colors.orange,
+                          ),
+                        )
+                      else
+                        const Expanded(
+                          flex: 2,
+                          child: Center(child: Text('该时间范围内的数据没有数值字段')),
                         ),
-                      ),
                       const SizedBox(height: 16),
                       Expanded(
                         flex: 1,
@@ -161,7 +168,8 @@ class _DataHistoryScreenState extends State<DataHistoryScreen> {
   Widget _buildDataKeySelector() {
     final provider = context.watch<DataProvider>();
     final data = provider.historicalData;
-    final dataKeys = data.isNotEmpty ? data.first.data.keys.toList() : ['temperature', 'humidity', 'voltage', 'current'];
+    final dataKeys = data.isNotEmpty ? _collectNumericKeys(data) : ['temperature', 'humidity', 'voltage', 'current'];
+    if (dataKeys.isEmpty) return const SizedBox.shrink();
     final selectedKey = _resolveDataKey(dataKeys);
 
     return Padding(
@@ -199,7 +207,7 @@ class _DataHistoryScreenState extends State<DataHistoryScreen> {
         itemCount: provider.historicalData.length.clamp(0, 20),
         itemBuilder: (context, index) {
           final data = provider.historicalData[index];
-          final selectedKey = _resolveDataKey(data.data.keys.toList());
+          final selectedKey = _resolveDataKey(_collectNumericKeys([data]));
           final value = data.data[selectedKey];
 
           return ListTile(
@@ -223,10 +231,23 @@ class _DataHistoryScreenState extends State<DataHistoryScreen> {
   }
 
   String _resolveDataKey(List<String> dataKeys) {
+    if (dataKeys.isEmpty) return _selectedDataKey;
     if (dataKeys.contains(_selectedDataKey)) {
       return _selectedDataKey;
     }
     return dataKeys.isNotEmpty ? dataKeys.first : _selectedDataKey;
+  }
+
+  List<String> _collectNumericKeys(List<SensorData> data) {
+    final keys = <String>{};
+    for (final item in data) {
+      item.data.forEach((key, value) {
+        if (value is num) {
+          keys.add(key);
+        }
+      });
+    }
+    return keys.toList();
   }
 
   void _showClearDialog() {

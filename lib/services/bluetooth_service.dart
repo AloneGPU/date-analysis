@@ -181,14 +181,8 @@ class BluetoothService {
       List<String> lines = trimmedMessage.split('\n');
       for (var line in lines) {
         if (line.trim().isEmpty) continue;
-        
-        try {
-          final jsonData = json.decode(line) as Map<String, dynamic>;
-          final sensorData = SensorData.fromJson(jsonData);
-          _dataController.add(sensorData);
-        } catch (e) {
-          print('数据解析错误: $e');
-        }
+
+        _dataController.add(SensorData.fromMessage(line));
       }
     } catch (e) {
       print('数据解析错误: $e');

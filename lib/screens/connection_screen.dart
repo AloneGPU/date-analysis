@@ -28,6 +28,47 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   final TextEditingController _wifiPortController = TextEditingController(text: '8080');
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadSavedConfig();
+    });
+  }
+
+  void _loadSavedConfig() {
+    final provider = context.read<DataProvider>();
+    final config = provider.savedConfig ?? provider.currentConfig;
+    if (config == null) {
+      setState(() {
+        _autoSave = provider.autoSave;
+      });
+      return;
+    }
+
+    setState(() {
+      _selectedType = config.type;
+      _autoSave = config.autoSave || provider.autoSave;
+      final settings = config.settings;
+      switch (config.type) {
+        case ConnectionType.mqtt:
+          _brokerController.text = (settings['broker'] ?? _brokerController.text).toString();
+          _portController.text = (settings['port'] ?? _portController.text).toString();
+          _topicController.text = (settings['topic'] ?? _topicController.text).toString();
+          _usernameController.text = (settings['username'] ?? '').toString();
+          _passwordController.text = (settings['password'] ?? '').toString();
+          break;
+        case ConnectionType.bluetooth:
+          _bluetoothDeviceIdController.text = (settings['device_id'] ?? '').toString();
+          break;
+        case ConnectionType.wifi:
+          _wifiHostController.text = (settings['host'] ?? _wifiHostController.text).toString();
+          _wifiPortController.text = (settings['port'] ?? _wifiPortController.text).toString();
+          break;
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _brokerController.dispose();
     _portController.dispose();
@@ -78,7 +119,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
       await provider.connect(config);
       
       if (mounted) {
-        if (provider.errorMessage == null) {
+        if (provider.isConnected && provider.errorMessage == null) {
           Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -162,7 +203,11 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('WiFi 设备扫描完成')),
+          SnackBar(
+            content: Text(provider.discoveredWifiDevices.isEmpty
+                ? '未发现设备，可手动输入 IP 和端口'
+                : '发现 ${provider.discoveredWifiDevices.length} 个设备'),
+          ),
         );
       }
     } catch (e) {
