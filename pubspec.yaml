@@ -1,0 +1,35 @@
+name: data_monitor
+description: 跨平台数据采集与可视化上位机
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # 状态管理
+  provider: ^6.0.0
+  # 图表可视化
+  fl_chart: ^1.2.0
+  # 数据库
+  sqflite: ^2.3.0
+  path: ^1.8.0
+  # 通讯协议
+  mqtt_client: ^10.0.0
+  flutter_bluetooth_serial: ^0.4.0
+  connectivity_plus: ^5.0.0
+  permission_handler: ^11.4.0
+  # 工具
+  intl: ^0.18.0
+  uuid: ^4.0.0
+  path_provider: ^2.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
