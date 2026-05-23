@@ -1,5 +1,10 @@
 // ESP8266 + GDY-31 蓝牙
 // Flutter数据监控应用兼容版
+// WiFi配置已包含
+
+// WiFi配置
+const char* WIFI_SSID = "zlt";
+const char* WIFI_PASSWORD = "12345678";
 
 // 发送间隔
 const unsigned long DATA_INTERVAL = 2000;
@@ -24,6 +29,7 @@ void setup() {
   
   delay(100);
   Serial.println("蓝牙开始发送数据...");
+  Serial.println("WiFi已配置: zlt");
   Serial.println("等待Flutter应用连接...");
   delay(500);
 }
