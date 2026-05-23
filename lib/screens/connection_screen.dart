@@ -599,6 +599,8 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     );
   }
 
+  static const List<int> commonPorts = [8080, 4210, 80, 9001, 1883, 5000];
+
   Widget _buildWifiSettings() {
     return Card(
       child: Padding(
@@ -634,6 +636,8 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                 prefixIcon: Icon(Icons.dialpad),
               ),
             ),
+            const SizedBox(height: 8),
+            _buildPortQuickSelect(),
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
@@ -659,6 +663,41 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPortQuickSelect() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '常用端口:',
+          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: commonPorts.map((port) {
+            final isSelected = _wifiPortController.text == port.toString();
+            return ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _wifiPortController.text = port.toString();
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                minimumSize: const Size(50, 32),
+                backgroundColor: isSelected ? Colors.blue : Colors.grey[100],
+                foregroundColor: isSelected ? Colors.white : Colors.grey[700],
+                elevation: isSelected ? 2 : 0,
+              ),
+              child: Text('$port'),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 

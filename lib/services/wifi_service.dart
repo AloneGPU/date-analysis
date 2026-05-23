@@ -31,13 +31,17 @@ class WifiService {
   Timer? _reconnectTimer;
   Timer? _heartbeatTimer;
   ConnectionConfig? _lastConfig;
-  static const Duration connectionTimeout = Duration(seconds: 10);
+  static const Duration connectionTimeout = Duration(seconds: 5);
   static const Duration discoveryTimeout = Duration(seconds: 4);
   static const int defaultDiscoveryPort = 4210;
   static const String discoveryProbe = 'DATA_MONITOR_DISCOVER';
   static const String discoveryReplyType = 'data_monitor_device';
   static const int maxRetries = 3;
+  
+  static const List<int> commonPorts = [8080, 4210, 80, 9001, 1883, 5000, 3000, 8888];
+  
   int _retryCount = 0;
+  int _portScanIndex = 0;
 
   Stream<SensorData> get dataStream => _dataController.stream;
   Stream<bool> get connectionStream => _connectionController.stream;
@@ -178,7 +182,7 @@ class WifiService {
     _devicesController.add(_devices);
   }
 
-  Future<void> connect(ConnectionConfig config) async {
+  Future<void> connect(ConnectionConfig config, {bool enablePortScan = true}) async {
     if (_isConnecting) {
       throw Exception('连接正在进行中');
     }
@@ -187,37 +191,63 @@ class WifiService {
     _lastConfig = config;
     _isConnected = false;
     _connectionController.add(false);
+    _retryCount = 0;
+    _portScanIndex = 0;
 
     final settings = config.settings;
     final host = settings['host'] as String;
-    final port = settings['port'] as int;
+    final primaryPort = settings['port'] as int;
 
-    try {
-      _socket = await Socket.connect(
-        host, 
-        port, 
-        timeout: connectionTimeout,
-      );
-      
-      _isConnected = true;
-      _isConnecting = false;
-      _retryCount = 0;
-      _connectionController.add(true);
-      _listenToData();
-      _startHeartbeat();
-    } on TimeoutException {
-      _isConnecting = false;
-      _isConnected = false;
-      _handleConnectionError('连接超时，请检查主机地址和端口');
-    } on SocketException catch (e) {
-      _isConnecting = false;
-      _isConnected = false;
-      _handleConnectionError('Socket错误: ${e.toString()}');
-    } catch (e) {
-      _isConnecting = false;
-      _isConnected = false;
-      _handleConnectionError('未知错误: ${e.toString()}');
+    await _tryConnectWithPortScan(host, primaryPort, enablePortScan);
+  }
+
+  Future<void> _tryConnectWithPortScan(String host, int primaryPort, bool enablePortScan) async {
+    final portsToTry = <int>{primaryPort};
+    
+    if (enablePortScan) {
+      portsToTry.addAll(commonPorts);
     }
+    
+    final portList = portsToTry.toList()..sort((a, b) {
+      if (a == primaryPort) return -1;
+      if (b == primaryPort) return 1;
+      return a.compareTo(b);
+    });
+
+    for (int i = _portScanIndex; i < portList.length; i++) {
+      _portScanIndex = i;
+      final port = portList[i];
+      
+      try {
+        _socket = await Socket.connect(host, port, timeout: connectionTimeout);
+        
+        _isConnected = true;
+        _isConnecting = false;
+        _retryCount = 0;
+        _portScanIndex = 0;
+        _connectionController.add(true);
+        _listenToData();
+        _startHeartbeat();
+        return;
+      } on TimeoutException {
+        if (i < portList.length - 1 && enablePortScan) {
+          continue;
+        }
+        _handleConnectionError('连接超时，请检查主机地址和端口');
+      } on SocketException catch (e) {
+        if (i < portList.length - 1 && enablePortScan) {
+          continue;
+        }
+        _handleConnectionError('连接失败: ${e.message}');
+      } catch (e) {
+        if (i < portList.length - 1 && enablePortScan) {
+          continue;
+        }
+        _handleConnectionError('未知错误: ${e.toString()}');
+      }
+    }
+    
+    _handleConnectionError('无法连接到主机 $host 的任何端口');
   }
 
   void _handleConnectionError(String message) {
@@ -310,6 +340,7 @@ class WifiService {
     _stopHeartbeat();
     _isConnecting = false;
     _retryCount = 0;
+    _portScanIndex = 0;
     
     if (_socket != null) {
       try {
