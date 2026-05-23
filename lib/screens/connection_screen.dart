@@ -670,7 +670,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           '常用端口:',
           style: TextStyle(fontSize: 12, color: Colors.grey[600]),
         ),
