@@ -13,6 +13,7 @@ import 'data_visualization_screen.dart';
 import 'raw_data_screen.dart';
 import 'storage_settings_screen.dart';
 import 'help_screen.dart';
+import 'serial_terminal_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -67,6 +68,16 @@ class _HomeScreenState extends State<HomeScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const RawDataScreen()),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.usb),
+            tooltip: '串口终端',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SerialTerminalScreen()),
               );
             },
           ),

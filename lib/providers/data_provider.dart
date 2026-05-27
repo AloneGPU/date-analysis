@@ -14,12 +14,14 @@ import '../services/mqtt_service.dart';
 import '../services/bluetooth_service.dart';
 import '../services/database_service.dart';
 import '../services/app_settings_service.dart';
+import '../services/serial_service.dart';
 
 class DataProvider extends ChangeNotifier {
   final AiService _aiService = AiService();
   final MqttService _mqttService = MqttService();
   final BluetoothService _bluetoothService = BluetoothService();
   final WifiService _wifiService = WifiService();
+  final SerialService _serialService = SerialService();
   final DatabaseService _databaseService = DatabaseService();
   final AppSettingsService _settingsService = AppSettingsService();
 
@@ -35,6 +37,7 @@ class DataProvider extends ChangeNotifier {
 
   StreamSubscription? _dataSubscription;
   StreamSubscription? _connectionSubscription;
+  StreamSubscription? _logSubscription;
 
   bool get isConnected => _isConnected;
   bool get autoSave => _autoSave;
@@ -49,8 +52,11 @@ class DataProvider extends ChangeNotifier {
   ConnectionConfig? get savedConfig => _savedConfig;
   AiConfig get aiConfig => _aiConfig;
   DatabaseService get databaseService => _databaseService;
+  SerialService get serialService => _serialService;
   List<BluetoothDevice> get discoveredBluetoothDevices => _bluetoothService.discoveredDevices;
   List<WifiDiscoveredDevice> get discoveredWifiDevices => _wifiService.discoveredDevices;
+  List<SerialPortInfo> get discoveredSerialPorts => _serialService.discoveredPorts;
+  Stream<String> get serialLogStream => _serialService.logStream;
 
   Future<void> loadSettings() async {
     try {
@@ -129,6 +135,15 @@ class DataProvider extends ChangeNotifier {
           await _wifiService.connect(config);
           _isConnected = _wifiService.isConnected;
           break;
+        case ConnectionType.serial:
+          _dataSubscription = _serialService.dataStream.listen(
+            _onDataReceived,
+            onError: (error) => _setConnectionError(error.toString()),
+          );
+          _connectionSubscription = _serialService.connectionStream.listen(_onConnectionChanged);
+          await _serialService.connect(config);
+          _isConnected = _serialService.isConnected;
+          break;
       }
 
       if (!_isConnected) {
@@ -150,6 +165,7 @@ class DataProvider extends ChangeNotifier {
   void disconnect() {
     _dataSubscription?.cancel();
     _connectionSubscription?.cancel();
+    _logSubscription?.cancel();
 
     switch (_currentConfig?.type) {
       case ConnectionType.mqtt:
@@ -160,6 +176,9 @@ class DataProvider extends ChangeNotifier {
         break;
       case ConnectionType.wifi:
         _wifiService.disconnect();
+        break;
+      case ConnectionType.serial:
+        _serialService.disconnect();
         break;
       default:
         break;
@@ -350,12 +369,18 @@ class DataProvider extends ChangeNotifier {
     return const JsonEncoder.withIndent('  ').convert(summary);
   }
 
+  Future<void> discoverSerialPorts() async {
+    await _serialService.startPortDiscovery();
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     disconnect();
     _mqttService.dispose();
     _bluetoothService.dispose();
     _wifiService.dispose();
+    _serialService.dispose();
     _databaseService.close();
     super.dispose();
   }

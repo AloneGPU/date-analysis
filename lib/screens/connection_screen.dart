@@ -27,6 +27,12 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   final TextEditingController _wifiHostController = TextEditingController(text: '192.168.1.100');
   final TextEditingController _wifiPortController = TextEditingController(text: '8080');
 
+  final TextEditingController _serialPortController = TextEditingController();
+  SerialBaudRate _selectedBaudRate = SerialBaudRate.b9600;
+  SerialDataBits _selectedDataBits = SerialDataBits.b8;
+  SerialStopBits _selectedStopBits = SerialStopBits.one;
+  SerialParity _selectedParity = SerialParity.none;
+
   @override
   void initState() {
     super.initState();
@@ -78,6 +84,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     _bluetoothDeviceIdController.dispose();
     _wifiHostController.dispose();
     _wifiPortController.dispose();
+    _serialPortController.dispose();
     super.dispose();
   }
 
@@ -101,6 +108,15 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         return ConnectionConfig.wifi(
           host: _wifiHostController.text,
           port: int.tryParse(_wifiPortController.text) ?? 8080,
+          autoSave: _autoSave,
+        );
+      case ConnectionType.serial:
+        return ConnectionConfig.serial(
+          portName: _serialPortController.text,
+          baudRate: _selectedBaudRate,
+          dataBits: _selectedDataBits,
+          stopBits: _selectedStopBits,
+          parity: _selectedParity,
           autoSave: _autoSave,
         );
     }
@@ -335,6 +351,8 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         return '蓝牙';
       case ConnectionType.wifi:
         return 'WiFi';
+      case ConnectionType.serial:
+        return '串口';
     }
   }
 
@@ -363,6 +381,14 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
           icon: Icon(
             Icons.wifi,
             color: _selectedType == ConnectionType.wifi ? Colors.blue : null,
+          ),
+        ),
+        ButtonSegment(
+          value: ConnectionType.serial,
+          label: const Text('串口'),
+          icon: Icon(
+            Icons.usb,
+            color: _selectedType == ConnectionType.serial ? Colors.blue : null,
           ),
         ),
       ],
@@ -418,6 +444,8 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         return _buildBluetoothSettings();
       case ConnectionType.wifi:
         return _buildWifiSettings();
+      case ConnectionType.serial:
+        return _buildSerialSettings();
     }
   }
 
@@ -754,6 +782,189 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSerialSettings() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.usb, color: Colors.blue),
+                const SizedBox(width: 8),
+                const Text('串口设置', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Consumer<DataProvider>(
+              builder: (context, provider, child) {
+                final ports = provider.discoveredSerialPorts;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: _serialPortController.text.isNotEmpty ? _serialPortController.text : null,
+                            hint: const Text('选择串口'),
+                            items: ports
+                                .map((port) => DropdownMenuItem(
+                                      value: port.name,
+                                      child: Text('${port.name} - ${port.description ?? 'Unknown'}'),
+                                    ))
+                                .toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                _serialPortController.text = value ?? '';
+                              });
+                            },
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: () => provider.discoverSerialPorts(),
+                          child: const Icon(Icons.search),
+                        ),
+                      ],
+                    ),
+                    if (ports.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          '未发现串口设备',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            const Text('串口参数', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('波特率', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      DropdownButtonFormField<SerialBaudRate>(
+                        value: _selectedBaudRate,
+                        items: SerialBaudRate.values
+                            .map((rate) => DropdownMenuItem(
+                                  value: rate,
+                                  child: Text(rate.toString()),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedBaudRate = value!;
+                          });
+                        },
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('数据位', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      DropdownButtonFormField<SerialDataBits>(
+                        value: _selectedDataBits,
+                        items: SerialDataBits.values
+                            .map((bits) => DropdownMenuItem(
+                                  value: bits,
+                                  child: Text(bits.toString()),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedDataBits = value!;
+                          });
+                        },
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('停止位', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      DropdownButtonFormField<SerialStopBits>(
+                        value: _selectedStopBits,
+                        items: SerialStopBits.values
+                            .map((bits) => DropdownMenuItem(
+                                  value: bits,
+                                  child: Text(bits.toString()),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedStopBits = value!;
+                          });
+                        },
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('校验位', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      DropdownButtonFormField<SerialParity>(
+                        value: _selectedParity,
+                        items: SerialParity.values
+                            .map((parity) => DropdownMenuItem(
+                                  value: parity,
+                                  child: Text(parity == SerialParity.none ? 'None' : parity.toString()),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedParity = value!;
+                          });
+                        },
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

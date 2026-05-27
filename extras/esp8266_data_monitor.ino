@@ -16,8 +16,8 @@
 #include <WiFiUdp.h>
 
 // WiFi 配置 - 修改为你的网络信息
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* ssid = "zlt";
+const char* password = "12345678";
 
 // 设备配置
 const char* deviceName = "ESP8266 Sensor";
